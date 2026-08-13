@@ -17,6 +17,8 @@ import org.dromara.common.core.utils.reflect.ReflectUtils;
 import org.dromara.common.redis.utils.RedisUtils;
 import org.dromara.common.satoken.utils.LoginHelper;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.Stack;
 import java.util.function.Supplier;
 
@@ -30,6 +32,11 @@ import java.util.function.Supplier;
 public class TenantHelper {
 
     private static final String DYNAMIC_TENANT_KEY = GlobalConstants.GLOBAL_REDIS_KEY + "dynamicTenant";
+
+    /**
+     * 可见租户范围缓存key前缀（值为租户id列表：当前租户 + 所有下级租户）
+     */
+    private static final String TENANT_SCOPE_KEY = GlobalConstants.GLOBAL_REDIS_KEY + "tenantScope:";
 
     private static final ThreadLocal<String> TEMP_DYNAMIC_TENANT = new ThreadLocal<>();
 
@@ -226,6 +233,61 @@ public class TenantHelper {
             tenantId = LoginHelper.getTenantId();
         }
         return tenantId;
+    }
+
+    /**
+     * 获取当前可见租户id列表（当前租户 + 所有下级租户）
+     * <p>
+     * 用于多级代理租户：上级租户账号可查询/管理自己及全部下级租户的数据，
+     * 数据范围由缓存中的租户树快照决定（登录或创建租户时刷新）。
+     * 未开启租户、未登录或无缓存时，仅返回当前租户自身，避免越权。
+     */
+    public static List<String> getTenantScope() {
+        if (!isEnable()) {
+            return List.of();
+        }
+        String tenantId = getTenantId();
+        if (StringUtils.isBlank(tenantId)) {
+            return List.of();
+        }
+        List<String> scope = RedisUtils.getCacheList(TENANT_SCOPE_KEY + tenantId);
+        if (CollectionUtil.isEmpty(scope)) {
+            // 兜底：无缓存时仅当前租户可见
+            return List.of(tenantId);
+        }
+        return scope;
+    }
+
+    /**
+     * 写入租户可见范围缓存（登录或租户树变更后调用）
+     *
+     * @param tenantId 租户id
+     * @param scope    可见租户id列表（须包含自身）
+     */
+    public static void setTenantScope(String tenantId, List<String> scope) {
+        if (!isEnable() || StringUtils.isBlank(tenantId) || CollectionUtil.isEmpty(scope)) {
+            return;
+        }
+        String key = TENANT_SCOPE_KEY + tenantId;
+        RedisUtils.deleteObject(key);
+        RedisUtils.setCacheList(key, scope);
+        RedisUtils.expire(key, Duration.ofDays(1));
+    }
+
+    /**
+     * 清除指定租户的可见范围缓存（租户树变更后调用）
+     */
+    public static void clearTenantScope(String tenantId) {
+        if (StringUtils.isNotBlank(tenantId)) {
+            RedisUtils.deleteObject(TENANT_SCOPE_KEY + tenantId);
+        }
+    }
+
+    /**
+     * 清除所有租户的可见范围缓存
+     */
+    public static void clearAllTenantScope() {
+        RedisUtils.deleteKeys(TENANT_SCOPE_KEY + "*");
     }
 
 }

@@ -30,6 +30,11 @@ public class SysTenant extends BaseEntity {
     private Long id;
 
     /**
+     * 父租户id（0为顶层租户）
+     */
+    private Long parentId;
+
+    /**
      * 租户编号
      */
     private String tenantId;

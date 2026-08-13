@@ -23,6 +23,7 @@ import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.common.redis.utils.CacheUtils;
+import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.common.tenant.core.TenantEntity;
 import org.dromara.common.tenant.helper.TenantHelper;
 import org.dromara.system.domain.*;
@@ -97,6 +98,11 @@ public class SysTenantServiceImpl implements ISysTenantService {
     private LambdaQueryWrapper<SysTenant> buildQueryWrapper(SysTenantBo bo) {
         LambdaQueryWrapper<SysTenant> lqw = Wrappers.lambdaQuery();
         lqw.eq(StringUtils.isNotBlank(bo.getTenantId()), SysTenant::getTenantId, bo.getTenantId());
+        // 多级代理：非超管只能看到自己及下级租户
+        if (!LoginHelper.isSuperAdmin()) {
+            List<String> scope = TenantHelper.getTenantScope();
+            lqw.in(CollUtil.isNotEmpty(scope), SysTenant::getTenantId, scope);
+        }
         lqw.like(StringUtils.isNotBlank(bo.getContactUserName()), SysTenant::getContactUserName, bo.getContactUserName());
         lqw.eq(StringUtils.isNotBlank(bo.getContactPhone()), SysTenant::getContactPhone, bo.getContactPhone());
         lqw.like(StringUtils.isNotBlank(bo.getCompanyName()), SysTenant::getCompanyName, bo.getCompanyName());
@@ -119,6 +125,23 @@ public class SysTenantServiceImpl implements ISysTenantService {
     @Transactional(rollbackFor = Exception.class)
     public Boolean insertByBo(SysTenantBo bo) {
         SysTenant add = MapstructUtils.convert(bo, SysTenant.class);
+
+        // 多级代理：确定父租户
+        // 平台超管创建顶层租户；租户管理员只能创建自己的下级租户
+        if (LoginHelper.isSuperAdmin()) {
+            add.setParentId(0L);
+        } else {
+            String currentTenantId = LoginHelper.getTenantId();
+            if (StringUtils.isBlank(currentTenantId)) {
+                throw new ServiceException("无法确定当前租户");
+            }
+            SysTenant currentTenant = baseMapper.selectOne(
+                new LambdaQueryWrapper<SysTenant>().eq(SysTenant::getTenantId, currentTenantId));
+            if (ObjectUtil.isNull(currentTenant)) {
+                throw new ServiceException("当前租户不存在");
+            }
+            add.setParentId(currentTenant.getId());
+        }
 
         // 获取所有租户编号
         List<String> tenantIds = baseMapper.selectObjs(
@@ -216,6 +239,8 @@ public class SysTenantServiceImpl implements ISysTenantService {
             // 新增租户流程定义
             workflowService.syncDef(tenantId);
         }
+        // 租户树发生变化，刷新所有租户的可见范围缓存
+        refreshTenantScopeAll();
         return true;
     }
 
@@ -280,10 +305,14 @@ public class SysTenantServiceImpl implements ISysTenantService {
     @CacheEvict(cacheNames = CacheNames.SYS_TENANT, key = "#bo.tenantId")
     @Override
     public Boolean updateByBo(SysTenantBo bo) {
+        // 多级代理：非超管只能修改自己及下级租户
+        checkTenantAllowed(bo.getTenantId());
         SysTenant tenant = MapstructUtils.convert(bo, SysTenant.class);
         tenant.setTenantId(null);
         tenant.setPackageId(null);
-        return baseMapper.updateById(tenant) > 0;
+        boolean flag = baseMapper.updateById(tenant) > 0;
+        refreshTenantScopeAll();
+        return flag;
     }
 
     /**
@@ -295,10 +324,13 @@ public class SysTenantServiceImpl implements ISysTenantService {
     @CacheEvict(cacheNames = CacheNames.SYS_TENANT, key = "#bo.tenantId")
     @Override
     public int updateTenantStatus(SysTenantBo bo) {
+        checkTenantAllowed(bo.getTenantId());
         SysTenant tenant = new SysTenant();
         tenant.setId(bo.getId());
         tenant.setStatus(bo.getStatus());
-        return baseMapper.updateById(tenant);
+        int rows = baseMapper.updateById(tenant);
+        refreshTenantScopeAll();
+        return rows;
     }
 
     /**
@@ -310,6 +342,23 @@ public class SysTenantServiceImpl implements ISysTenantService {
     public void checkTenantAllowed(String tenantId) {
         if (ObjectUtil.isNotNull(tenantId) && TenantConstants.DEFAULT_TENANT_ID.equals(tenantId)) {
             throw new ServiceException("不允许操作管理租户");
+        }
+        // 多级代理：非超管只能操作自己及下级租户
+        checkTenantScopeAllowed(tenantId);
+    }
+
+    /**
+     * 校验目标租户是否在当前账号可见范围内
+     *
+     * @param tenantId 租户ID
+     */
+    private void checkTenantScopeAllowed(String tenantId) {
+        if (StringUtils.isBlank(tenantId) || LoginHelper.isSuperAdmin()) {
+            return;
+        }
+        List<String> scope = TenantHelper.getTenantScope();
+        if (!scope.contains(tenantId)) {
+            throw new ServiceException("无权操作该租户");
         }
     }
 
@@ -325,7 +374,19 @@ public class SysTenantServiceImpl implements ISysTenantService {
                 throw new ServiceException("超管租户不能删除");
             }
         }
-        return baseMapper.deleteByIds(ids) > 0;
+        // 多级代理：非超管只能删除自己下级租户
+        if (!LoginHelper.isSuperAdmin()) {
+            List<SysTenant> tenants = baseMapper.selectBatchIds(ids);
+            List<String> scope = TenantHelper.getTenantScope();
+            for (SysTenant tenant : tenants) {
+                if (!scope.contains(tenant.getTenantId())) {
+                    throw new ServiceException("无权删除租户：" + tenant.getCompanyName());
+                }
+            }
+        }
+        boolean flag = baseMapper.deleteByIds(ids) > 0;
+        refreshTenantScopeAll();
+        return flag;
     }
 
     /**
@@ -561,6 +622,64 @@ public class SysTenantServiceImpl implements ISysTenantService {
         });
         for (String tenantId : syncTenantIds) {
             TenantHelper.dynamic(tenantId, () -> CacheUtils.clear(CacheNames.SYS_CONFIG));
+        }
+    }
+
+    /**
+     * 查询当前账号可见的租户列表（自己 + 全部下级租户，多级代理）
+     */
+    @Override
+    public List<SysTenantVo> queryTenantScope() {
+        return queryList(new SysTenantBo());
+    }
+
+    /**
+     * 刷新指定租户的可见范围缓存（登录后调用）
+     *
+     * @param tenantId 租户id
+     */
+    @Override
+    public void refreshTenantScope(String tenantId) {
+        if (!TenantHelper.isEnable() || StringUtils.isBlank(tenantId)) {
+            return;
+        }
+        List<String> scope = new ArrayList<>();
+        collectTenantScope(tenantId, scope);
+        TenantHelper.setTenantScope(tenantId, scope);
+    }
+
+    /**
+     * 刷新所有租户的可见范围缓存（租户树变更后调用）
+     */
+    @Override
+    public void refreshTenantScopeAll() {
+        if (!TenantHelper.isEnable()) {
+            return;
+        }
+        List<SysTenant> tenants = baseMapper.selectList(
+            new LambdaQueryWrapper<SysTenant>().select(SysTenant::getTenantId));
+        for (SysTenant tenant : tenants) {
+            refreshTenantScope(tenant.getTenantId());
+        }
+    }
+
+    /**
+     * 递归收集租户及其全部子孙租户id（含自身）
+     *
+     * @param tenantId 租户id
+     * @param scope    收集结果
+     */
+    private void collectTenantScope(String tenantId, List<String> scope) {
+        scope.add(tenantId);
+        SysTenant current = baseMapper.selectOne(
+            new LambdaQueryWrapper<SysTenant>().eq(SysTenant::getTenantId, tenantId));
+        if (ObjectUtil.isNull(current)) {
+            return;
+        }
+        List<SysTenant> children = baseMapper.selectList(
+            new LambdaQueryWrapper<SysTenant>().eq(SysTenant::getParentId, current.getId()));
+        for (SysTenant child : children) {
+            collectTenantScope(child.getTenantId(), scope);
         }
     }
 

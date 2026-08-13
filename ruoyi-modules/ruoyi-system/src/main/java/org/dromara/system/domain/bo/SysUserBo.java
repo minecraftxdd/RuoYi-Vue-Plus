@@ -30,6 +30,11 @@ public class SysUserBo extends BaseEntity {
     private Long userId;
 
     /**
+     * 归属租户id（多级代理：上级租户管理员可为下级公司创建/转移用户，为空则归属当前登录租户）
+     */
+    private String tenantId;
+
+    /**
      * 部门ID
      */
     private Long deptId;

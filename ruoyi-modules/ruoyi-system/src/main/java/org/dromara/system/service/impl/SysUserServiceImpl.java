@@ -22,6 +22,7 @@ import org.dromara.common.core.utils.*;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.common.satoken.utils.LoginHelper;
+import org.dromara.common.tenant.helper.TenantHelper;
 import org.dromara.system.domain.SysUser;
 import org.dromara.system.domain.SysUserPost;
 import org.dromara.system.domain.SysUserRole;
@@ -310,6 +311,8 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int insertUser(SysUserBo user) {
+        // 多级代理：确定/校验用户归属租户（上级可为下级租户创建用户）
+        checkAndFillTenant(user);
         SysUser sysUser = MapstructUtils.convert(user, SysUser.class);
         // 新增用户信息
         int rows = baseMapper.insert(sysUser);
@@ -319,6 +322,26 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
         // 新增用户与角色管理
         insertUserRole(user, false);
         return rows;
+    }
+
+    /**
+     * 多级代理：新增用户时确定归属租户
+     * <p>
+     * 未指定租户默认归属当前登录租户；指定租户必须在当前账号可见范围内
+     */
+    private void checkAndFillTenant(SysUserBo user) {
+        if (!TenantHelper.isEnable()) {
+            return;
+        }
+        String tenantId = user.getTenantId();
+        if (StringUtils.isBlank(tenantId)) {
+            user.setTenantId(LoginHelper.getTenantId());
+            return;
+        }
+        List<String> scope = TenantHelper.getTenantScope();
+        if (CollUtil.isEmpty(scope) || !scope.contains(tenantId)) {
+            throw new ServiceException("无权为租户[" + tenantId + "]创建用户");
+        }
     }
 
     /**
@@ -346,6 +369,8 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
     @CacheEvict(cacheNames = CacheNames.SYS_NICKNAME, key = "#user.userId")
     @Transactional(rollbackFor = Exception.class)
     public int updateUser(SysUserBo user) {
+        // 多级代理：若调整用户归属租户，目标租户必须在当前账号可见范围内
+        checkTenantScope(user);
         // 新增用户与角色管理
         insertUserRole(user, true);
         // 新增用户与岗位管理
@@ -357,6 +382,19 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
             throw new ServiceException("修改用户{}信息失败", user.getUserName());
         }
         return flag;
+    }
+
+    /**
+     * 多级代理：校验用户归属租户调整是否在可见范围内
+     */
+    private void checkTenantScope(SysUserBo user) {
+        if (!TenantHelper.isEnable() || StringUtils.isBlank(user.getTenantId())) {
+            return;
+        }
+        List<String> scope = TenantHelper.getTenantScope();
+        if (CollUtil.isEmpty(scope) || !scope.contains(user.getTenantId())) {
+            throw new ServiceException("无权将用户归属到租户[" + user.getTenantId() + "]");
+        }
     }
 
     /**
