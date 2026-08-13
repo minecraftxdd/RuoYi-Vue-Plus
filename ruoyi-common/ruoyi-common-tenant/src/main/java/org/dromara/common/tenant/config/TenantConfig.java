@@ -9,6 +9,7 @@ import org.dromara.common.redis.config.properties.RedissonProperties;
 import org.dromara.common.tenant.core.TenantSaTokenDao;
 import org.dromara.common.tenant.handle.PlusTenantLineHandler;
 import org.dromara.common.tenant.handle.TenantKeyPrefixHandler;
+import org.dromara.common.tenant.handle.TenantScopeLineInnerInterceptor;
 import org.dromara.common.tenant.manager.TenantSpringCacheManager;
 import org.dromara.common.tenant.properties.TenantProperties;
 import org.redisson.config.ClusterServersConfig;
@@ -37,11 +38,11 @@ public class TenantConfig {
     static class MybatisPlusConfiguration {
 
         /**
-         * 多租户插件
+         * 多租户插件（多级代理：查询/更新/删除按可见租户范围过滤，插入按当前租户）
          */
         @Bean
         public TenantLineInnerInterceptor tenantLineInnerInterceptor(TenantProperties tenantProperties) {
-            return new TenantLineInnerInterceptor(new PlusTenantLineHandler(tenantProperties));
+            return new TenantScopeLineInnerInterceptor(new PlusTenantLineHandler(tenantProperties));
         }
 
     }

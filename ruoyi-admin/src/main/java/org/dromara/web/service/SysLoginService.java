@@ -168,6 +168,8 @@ public class SysLoginService {
         List<SysPostVo> posts = postService.selectPostsByUserId(userId);
         loginUser.setRoles(BeanUtil.copyToList(roles, RoleDTO.class));
         loginUser.setPosts(BeanUtil.copyToList(posts, PostDTO.class));
+        // 多级代理：登录后刷新当前租户的可见范围缓存（当前租户 + 全部下级租户）
+        tenantService.refreshTenantScope(user.getTenantId());
         return loginUser;
     }
 

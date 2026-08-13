@@ -36,6 +36,21 @@ public interface ISysTenantService {
     List<SysTenantVo> queryList(SysTenantBo bo);
 
     /**
+     * 查询当前账号可见的租户列表（自己 + 全部下级租户，多级代理）
+     */
+    List<SysTenantVo> queryTenantScope();
+
+    /**
+     * 刷新指定租户的可见范围缓存（登录后调用）
+     */
+    void refreshTenantScope(String tenantId);
+
+    /**
+     * 刷新所有租户的可见范围缓存（租户树变更后调用）
+     */
+    void refreshTenantScopeAll();
+
+    /**
      * 新增租户
      */
     Boolean insertByBo(SysTenantBo bo);

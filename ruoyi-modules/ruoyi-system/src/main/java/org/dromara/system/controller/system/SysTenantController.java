@@ -2,6 +2,7 @@ package org.dromara.system.controller.system;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaCheckRole;
+import cn.dev33.satoken.annotation.SaMode;
 import com.baomidou.lock.annotation.Lock4j;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.NotBlank;
@@ -46,19 +47,28 @@ public class SysTenantController extends BaseController {
 
     /**
      * 查询租户列表
+     * <p>
+     * 平台超管查看全部租户，租户管理员仅查看自己及下级租户（多级代理）
      */
-    @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
-    @SaCheckPermission("system:tenant:list")
+    @SaCheckPermission(value = {"system:tenant:list", "system:tenantChild:list"}, mode = SaMode.OR)
     @GetMapping("/list")
     public TableDataInfo<SysTenantVo> list(SysTenantBo bo, PageQuery pageQuery) {
         return tenantService.queryPageList(bo, pageQuery);
     }
 
     /**
+     * 查询当前账号可见的租户列表（自己 + 全部下级租户，供前端下拉/树使用）
+     */
+    @SaCheckPermission(value = {"system:tenant:list", "system:tenantChild:list"}, mode = SaMode.OR)
+    @GetMapping("/scope")
+    public R<List<SysTenantVo>> scope() {
+        return R.ok(tenantService.queryTenantScope());
+    }
+
+    /**
      * 导出租户列表
      */
-    @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
-    @SaCheckPermission("system:tenant:export")
+    @SaCheckPermission(value = {"system:tenant:export", "system:tenantChild:list"}, mode = SaMode.OR)
     @Log(title = "租户管理", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
     public void export(SysTenantBo bo, HttpServletResponse response) {
@@ -71,8 +81,7 @@ public class SysTenantController extends BaseController {
      *
      * @param id 主键
      */
-    @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
-    @SaCheckPermission("system:tenant:query")
+    @SaCheckPermission(value = {"system:tenant:query", "system:tenantChild:list"}, mode = SaMode.OR)
     @GetMapping("/{id}")
     public R<SysTenantVo> getInfo(@NotNull(message = "主键不能为空")
                                   @PathVariable Long id) {
@@ -81,10 +90,11 @@ public class SysTenantController extends BaseController {
 
     /**
      * 新增租户
+     * <p>
+     * 平台超管新增顶层租户；租户管理员新增自己的下级租户（多级代理）
      */
     @ApiEncrypt
-    @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
-    @SaCheckPermission("system:tenant:add")
+    @SaCheckPermission(value = {"system:tenant:add", "system:tenantChild:add"}, mode = SaMode.OR)
     @Log(title = "租户管理", businessType = BusinessType.INSERT)
     @Lock4j
     @RepeatSubmit()
@@ -99,8 +109,7 @@ public class SysTenantController extends BaseController {
     /**
      * 修改租户
      */
-    @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
-    @SaCheckPermission("system:tenant:edit")
+    @SaCheckPermission(value = {"system:tenant:edit", "system:tenantChild:edit"}, mode = SaMode.OR)
     @Log(title = "租户管理", businessType = BusinessType.UPDATE)
     @RepeatSubmit()
     @PutMapping()
@@ -115,8 +124,7 @@ public class SysTenantController extends BaseController {
     /**
      * 状态修改
      */
-    @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
-    @SaCheckPermission("system:tenant:edit")
+    @SaCheckPermission(value = {"system:tenant:edit", "system:tenantChild:edit"}, mode = SaMode.OR)
     @Log(title = "租户管理", businessType = BusinessType.UPDATE)
     @RepeatSubmit()
     @PutMapping("/changeStatus")
@@ -130,8 +138,7 @@ public class SysTenantController extends BaseController {
      *
      * @param ids 主键串
      */
-    @SaCheckRole(TenantConstants.SUPER_ADMIN_ROLE_KEY)
-    @SaCheckPermission("system:tenant:remove")
+    @SaCheckPermission(value = {"system:tenant:remove", "system:tenantChild:remove"}, mode = SaMode.OR)
     @Log(title = "租户管理", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
     public R<Void> remove(@NotEmpty(message = "主键不能为空")

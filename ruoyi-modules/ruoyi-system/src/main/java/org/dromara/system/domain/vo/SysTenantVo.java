@@ -33,6 +33,12 @@ public class SysTenantVo implements Serializable {
     private Long id;
 
     /**
+     * 父租户id（0为顶层租户）
+     */
+    @ExcelProperty(value = "父租户id")
+    private Long parentId;
+
+    /**
      * 租户编号
      */
     @ExcelProperty(value = "租户编号")
