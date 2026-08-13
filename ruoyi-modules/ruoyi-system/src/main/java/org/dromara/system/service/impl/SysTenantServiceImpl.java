@@ -310,6 +310,8 @@ public class SysTenantServiceImpl implements ISysTenantService {
         SysTenant tenant = MapstructUtils.convert(bo, SysTenant.class);
         tenant.setTenantId(null);
         tenant.setPackageId(null);
+        // 多级代理：上级公司由新增时按登录账号强制确定，修改不允许变更父级（防止越权调整租户层级/构造环）
+        tenant.setParentId(null);
         boolean flag = baseMapper.updateById(tenant) > 0;
         refreshTenantScopeAll();
         return flag;
@@ -670,6 +672,21 @@ public class SysTenantServiceImpl implements ISysTenantService {
      * @param scope    收集结果
      */
     private void collectTenantScope(String tenantId, List<String> scope) {
+        collectTenantScope(tenantId, scope, new HashSet<>());
+    }
+
+    /**
+     * 递归收集租户及其全部子孙租户id（含自身）
+     *
+     * @param tenantId 租户id
+     * @param scope    收集结果
+     * @param visited  已访问租户集合，防止父子环导致无限递归
+     */
+    private void collectTenantScope(String tenantId, List<String> scope, Set<String> visited) {
+        // 防环：租户树存在父子环（如 A.parentId=B 且 B.parentId=A）时避免无限递归
+        if (!visited.add(tenantId)) {
+            return;
+        }
         scope.add(tenantId);
         SysTenant current = baseMapper.selectOne(
             new LambdaQueryWrapper<SysTenant>().eq(SysTenant::getTenantId, tenantId));
@@ -679,7 +696,7 @@ public class SysTenantServiceImpl implements ISysTenantService {
         List<SysTenant> children = baseMapper.selectList(
             new LambdaQueryWrapper<SysTenant>().eq(SysTenant::getParentId, current.getId()));
         for (SysTenant child : children) {
-            collectTenantScope(child.getTenantId(), scope);
+            collectTenantScope(child.getTenantId(), scope, visited);
         }
     }
 
