@@ -338,6 +338,13 @@
                 <version>${revision}</version>
             </dependency>
 
+            <!--  二维码通行模块  -->
+            <dependency>
+                <groupId>org.dromara</groupId>
+                <artifactId>ruoyi-qrcode</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
             <dependency>
                 <groupId>org.dromara</groupId>
                 <artifactId>ruoyi-generator</artifactId>
