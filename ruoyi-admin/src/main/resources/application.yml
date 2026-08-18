@@ -22,7 +22,7 @@ server:
 
 captcha:
   # 是否启用验证码校验
-  enable: true
+  enable: false
   # 验证码类型 math 数组计算 char 字符验证
   type: math
   # 数字验证码位数
@@ -116,6 +116,9 @@ security:
     - /*/api-docs
     - /*/api-docs/**
     - /warm-flow-ui/config
+    # 设备端接口 (人脸识别设备匿名调用)
+    - /api/v1/qrcode_recognition
+    - /client_write_record
 
 # 多租户配置
 tenant:
@@ -133,6 +136,9 @@ tenant:
     - sys_client
     - sys_oss_config
     - flow_spel
+    # 二维码通行表 (通用能力, 无租户字段, 按项目ID隔离)
+    - face_qr_code
+    - face_qr_record
 
 # MyBatisPlus配置
 # https://baomidou.com/config/
@@ -169,7 +175,7 @@ mybatis-encryptor:
 # api接口加密
 api-decrypt:
   # 是否开启全局接口加密
-  enabled: true
+  enabled: false
   # AES 加密头标识
   headerFlag: encrypt-key
   # 响应加密公钥 非对称算法的公私钥 如：SM2，RSA 使用者请自行更换
@@ -207,6 +213,8 @@ springdoc:
       packages-to-scan: org.dromara.generator
     - group: 5.工作流模块
       packages-to-scan: org.dromara.workflow
+    - group: 6.二维码通行模块
+      packages-to-scan: org.dromara.qrcode
 
 # 防止XSS攻击
 xss:
