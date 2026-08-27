@@ -52,6 +52,19 @@ nbdist/
 .flattened-pom.xml
 
 ######################################################################
+# Development Tools
+.omo/
+.reasonix/
+.serena/
+.codegraph/
+.pnpm-store/
+
+######################################################################
+# Test Files
+test_*.java
+verify_encoding.java
+
+######################################################################
 # Local Configuration (do not commit)
 # 本地调试配置文件，禁止上传，拉取时不覆盖
 ruoyi-admin/src/main/resources/application-dev.yml
