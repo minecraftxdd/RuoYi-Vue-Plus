@@ -139,6 +139,9 @@ tenant:
     # 二维码通行表 (通用能力, 无租户字段, 按项目ID隔离)
     - face_qr_code
     - face_qr_record
+    # 人脸照片表 (通用能力, 无租户字段)
+    - face_photo
+    - face_photo_encode_log
 
 # MyBatisPlus配置
 # https://baomidou.com/config/

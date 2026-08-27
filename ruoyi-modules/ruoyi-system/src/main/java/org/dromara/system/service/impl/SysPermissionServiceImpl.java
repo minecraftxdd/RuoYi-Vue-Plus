@@ -53,7 +53,9 @@ public class SysPermissionServiceImpl implements ISysPermissionService, Permissi
         Set<String> perms = new HashSet<>();
         // 管理员拥有所有权限
         if (LoginHelper.isSuperAdmin(userId)) {
-            perms.add("*:*:*");
+            // Sa-Token 不做通配符解析，*:*:* 仅作字面字符串无法匹配具体权限码
+            // superadmin 直接返回数据库中的所有菜单权限
+            perms.addAll(menuService.selectMenuPermsByUserId(userId));
         } else {
             perms.addAll(menuService.selectMenuPermsByUserId(userId));
         }

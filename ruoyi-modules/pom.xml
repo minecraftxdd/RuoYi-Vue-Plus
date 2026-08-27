@@ -14,6 +14,7 @@
         <module>ruoyi-generator</module>
         <module>ruoyi-job</module>
         <module>ruoyi-qrcode</module>
+        <module>ruoyi-photo</module>
         <module>ruoyi-system</module>
         <module>ruoyi-workflow</module>
     </modules>
