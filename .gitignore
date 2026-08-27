@@ -59,10 +59,6 @@ nbdist/
 .codegraph/
 .pnpm-store/
 
-######################################################################
-# Test Files
-test_*.java
-verify_encoding.java
 
 ######################################################################
 # Local Configuration (do not commit)
