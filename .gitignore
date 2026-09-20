@@ -65,3 +65,13 @@ nbdist/
 # 本地调试配置文件，禁止上传，拉取时不覆盖
 ruoyi-admin/src/main/resources/application-dev.yml
 ruoyi-admin/src/main/resources/application-local.yml
+
+######################################################################
+# AI Agent & Development Tools
+.mimocode/
+.rivet-config.json
+.rivet.md
+.rivet/
+AGENTS.md
+docs/
+reasonix.toml
